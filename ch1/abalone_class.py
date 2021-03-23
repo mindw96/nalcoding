@@ -1,6 +1,6 @@
-import numpy as np
 import csv
-import time
+
+import numpy as np
 
 np.random.seed(1234)
 
@@ -12,7 +12,7 @@ learningrate = 0.001
 
 class Abalone:
     # 하이퍼파라미터 값들을 매개변수로 받아서 학습에 사용되는 함수로 전달해주는 전체적인 함수
-    def abalone_exec(self, epoch_count=50, mb_size=150, report=1):
+    def abalone_exec(self, epoch_count=11, mb_size=10, report=1):
         self.load_dataset()
         self.init_model()
         self.train_and_test(epoch_count, mb_size, report)

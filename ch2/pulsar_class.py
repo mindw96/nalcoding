@@ -6,11 +6,16 @@ from ch1.abalone_class import Abalone
 
 
 class Pulsar(Abalone):
+    def __init__(self, epoch_count, mb_size, report):
+        self._epoch_count = epoch_count
+        self._mb_size = mb_size
+        self._report = report
+
     # 메인 함수, 여러 함수들을 초기화 해준다.
-    def pulsar_exec(self, epoch_count=10, mb_size=10, report=1):
+    def pulsar_exec(self):
         self.load_dataset()
         self.init_model()
-        self.train_and_test(epoch_count, mb_size, report)
+        self.train_and_test(self._epoch_count, self._mb_size, self._report)
 
     # pulsar 데이터셋을 불러오는 함수
     def load_dataset(self):
@@ -72,14 +77,14 @@ class Pulsar(Abalone):
 
     # sigmoid cross entropy를 정의하는 함수이다.
     def sigmoid_cross_entropy_with_logits(self, z, x):
-        self.z = np.reshape(z, (10,1))
+        self.z = np.reshape(z, (10, 1))
         return self.relu(x) - x * z + np.log(1 + np.exp(-np.abs(x)))
 
     # sigmoid cross entropy의 편미분를 정의하는 함수이다.
     def sigmoid_cross_entropy_with_logits_derv(self, z, x):
-        self.z = np.reshape(z, (10,1))
+        self.z = np.reshape(z, (10, 1))
         return -self.z + self.sigmoid(x)
 
 
-main = Pulsar()
+main = Pulsar(10, 10, 1)
 main.pulsar_exec()
