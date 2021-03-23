@@ -8,12 +8,12 @@ from ch1.abalone_class import Abalone
 class Pulsar(Abalone):
     # 메인 함수, 여러 함수들을 초기화 해준다.
     def pulsar_exec(self, epoch_count=10, mb_size=10, report=1):
-        self.load_pulsar_dataset()
+        self.load_dataset()
         self.init_model()
         self.train_and_test(epoch_count, mb_size, report)
 
     # pulsar 데이터셋을 불러오는 함수
-    def load_pulsar_dataset(self):
+    def load_dataset(self):
         # 데이터셋 파일만 다를뿐 나머지는 1장 함수와 동일하다.
         with open('pulsar_stars.csv') as csvfile:
             csvreader = _csv.reader(csvfile)
@@ -72,11 +72,13 @@ class Pulsar(Abalone):
 
     # sigmoid cross entropy를 정의하는 함수이다.
     def sigmoid_cross_entropy_with_logits(self, z, x):
+        self.z = np.reshape(z, (10,1))
         return self.relu(x) - x * z + np.log(1 + np.exp(-np.abs(x)))
 
     # sigmoid cross entropy의 편미분를 정의하는 함수이다.
     def sigmoid_cross_entropy_with_logits_derv(self, z, x):
-        return -z + self.sigmoid(x)
+        self.z = np.reshape(z, (10,1))
+        return -self.z + self.sigmoid(x)
 
 
 main = Pulsar()

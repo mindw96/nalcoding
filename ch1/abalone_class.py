@@ -13,12 +13,12 @@ learningrate = 0.001
 class Abalone:
     # 하이퍼파라미터 값들을 매개변수로 받아서 학습에 사용되는 함수로 전달해주는 전체적인 함수
     def abalone_exec(self, epoch_count=50, mb_size=150, report=1):
-        self.load_abalone_dataset()
+        self.load_dataset()
         self.init_model()
         self.train_and_test(epoch_count, mb_size, report)
 
     # 데이터셋을 불러오는 함수
-    def load_abalone_dataset(self):
+    def load_dataset(self):
         # csv 파일을 csv라이브러리를 활용하여 불러온다
         with open('../ch1/abalone.csv') as csvfile:
             csvreader = csv.reader(csvfile)
