@@ -107,7 +107,7 @@ def get_train_data(mb_size, nth):
         np.random.shuffle(shuffle_map[:test_begin_idx])
     # 전체 데이터의 80%를 학습 데이터로 사용
     train_data = data[shuffle_map[mb_size * nth:mb_size * (nth + 1)]]
-    return train_data[:, :-output_cnt], train_data[:, -output_cnt]
+    return train_data[:, :-output_cnt], train_data[:, -output_cnt:]
 
 
 # 미니배치 단위 학습을 해주는 함수
@@ -163,11 +163,7 @@ def backprop_neuralnet(G_output, x):
 # 순전파의 후처리를 하는 함수
 def forward_postproc(output, y):
     # output과 레이블의 차이인 오차를 구한다.
-    # 책에서는 (10,1)인 output과 (10,)인 y의 '-' 연산의 결과가 (10,1)이 나온다 하지만 브로드캐스팅으로 (10,10)이 나온다.
-    # 따라서 output을 (10,)으로 바꿔주고 연산 후 (10,)인 diff의 형태를 reshape함수를 통해 (10,1)로 바꿔주었다.
-    output = output.flatten()
     diff = output - y
-    diff = np.reshape(diff, (-1, 1))
     # 오차를 제곱한다.
     square = np.square(diff)
     # 오차 제곱의 평균을 통해 loss를 구한다. (평균오차제곱)

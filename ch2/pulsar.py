@@ -77,15 +77,11 @@ def sigmoid_derv(x, y):
 
 # 이진 분류에서 주로 사용하는 sigmoid cross entropy를 정의하는 함수이다.
 def sigmoid_cross_entropy_with_logits(z, x):
-    # x * z를 그대로 시행하면 브로드캐스팅이 발생하여 return값의 shape이 변하기 때문에 reshape을 통해 브로드캐스팅을 방지한다.
-    z = np.reshape(z, (10, 1))
     return relu(x) - x * z + np.log(1 + np.exp(-np.abs(x)))
 
 
 # sigmoid cross entropy의 편미분를 정의하는 함수이다.
 def sigmoid_cross_entropy_with_logits_derv(z, x):
-    # x * z를 그대로 시행하면 브로드캐스팅이 발생하여 return값의 shape이 변하기 때문에 reshape을 통해 브로드캐스팅을 방지한다.
-    z = np.reshape(z, (10, 1))
     return -z + sigmoid(x)
 
 
@@ -158,7 +154,7 @@ def get_train_data(mb_size, nth):
         np.random.shuffle(shuffle_map[:test_begin_idx])
     # 전체 데이터의 80%를 학습 데이터로 사용
     train_data = data[shuffle_map[mb_size * nth:mb_size * (nth + 1)]]
-    return train_data[:, :-output_cnt], train_data[:, -output_cnt]
+    return train_data[:, :-output_cnt], train_data[:, -output_cnt:]
 
 
 # 미니배치 단위 학습을 해주는 함수

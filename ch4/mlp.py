@@ -3,6 +3,192 @@ import _csv
 import numpy as np
 
 
+# 은닉층이 1개인 모델을 정의하는 함수
+def init_model_hidden1():
+    global pm_output, pm_hidden, input_cnt, output_cnt, hidden_cnt
+
+    pm_hidden = alloc_param_pair([input_cnt, hidden_cnt])
+    pm_output = alloc_param_pair([hidden_cnt, output_cnt])
+
+
+# 파라미터인 weight와 bias를 정의해주는 함수이다.
+def alloc_param_pair(shape):
+    # 초기 weight를 랜덤하게 초기화 해준다.
+    weight = np.random.normal(RND_MEAN, RND_STD, shape)
+    # 초기 bias를 0으로 초기화 해준다.
+    bias = np.zeros(shape[-1])
+
+    return {'w': weight, 'b': bias}
+
+
+# 은닉층의 순전파를 수행하는 함수이다.
+def forward_neuralnet_hidden1(x):
+    global pm_output, pm_hidden
+    # 전역변수인 은닉층의 파라미터를 통해서 hypothesis 연산을하고 relu를 통해 활성화 여부를 결정한다.
+    hidden = relu(np.matmul(x, pm_hidden['w'], ) + pm_hidden['b'])
+    # 전역변수인 출력층의 파라미터를 활용하여 연산을한다. 출력층은 최종 결과를 도출하기 때문에 relu를 적용하지 않는다.
+    output = np.matmul(hidden, pm_output['w'] + pm_output['b'])
+
+    return output, [x, hidden]
+
+
+# 활성화 함수인 relu를 구현하는 함수이다.
+def relu(x):
+    return np.maximum(x, 0)
+
+
+# 역전파를 수행하는 함수이다.
+def backprop_neuralnet_hidden1(G_output, aux):
+    global pm_output, pm_hidden
+
+    x, hidden = aux
+
+    # 은닉층의 순전파 결과를 전치한다.
+    g_output_w_out = hidden.transpose()
+    # G_output과 전치한 순전파 결과를 곱해서 손실 기울기를 구한다.
+    G_w_out = np.matmul(g_output_w_out, G_output)
+    # G_output의 값들을 다 더해서 손실 기울기를 구한다.
+    G_b_out = np.sum(G_output, axis=0)
+    # 출력층의 가중치를 전치한다.
+    g_output_hidden = pm_output['w'].transpose()
+    # G_output과 전치한 output 층의 가중치를 곱한다.
+    G_hidden = np.matmul(G_output, g_output_hidden)
+    # 출력층의 가중치를 업데이트한다.
+    pm_output['w'] -= learning_rate * G_w_out
+    # 출력층의 bias를 업데이트한다.
+    pm_output['b'] -= learning_rate * G_b_out
+
+    # Relu의 편미분을 활용하여 G_hidden을 업데이트한다.
+    G_hidden = G_hidden * relu_derv(hidden)
+    # 순전파 처리 전 입력값을 전치한다.
+    g_hidden_w_hid = x.transpose()
+    # 전치한 입력값과 G_hidden을 곱해서 손실 기울기 값을 구한다.
+    G_w_hid = np.matmul(g_hidden_w_hid, G_hidden)
+    # G_hidden의 값들을 모두 더해서 bias를 구한다.
+    G_b_hid = np.sum(G_hidden, axis=0)
+    # 은닉층의 weight를 업데이트한다.
+    pm_hidden['w'] -= learning_rate * G_w_hid
+    # 은닉층의 bias를 업데이트한다.
+    pm_hidden['b'] -= learning_rate * G_b_hid
+
+
+# Relu를 편미분하는 함수이다.
+def relu_derv(y):
+    return np.sign(y)
+
+
+# 은닉층이 여러개인 모델을 정의하는 함수이다.
+def init_model_hiddens():
+    global pm_output, pm_hiddens, input_cnt, output_cnt, hidden_config
+
+    pm_hiddens = []
+    prev_cnt = input_cnt
+    # 반복문을 활용하여 은닉층의 개수만큼 파라미터를 초기화한다.
+    for hidden_cnt in hidden_config:
+        pm_hiddens.append(alloc_param_pair([prev_cnt, hidden_cnt]))
+        # prev_cnt도 업데이트 한다.
+        prev_cnt = hidden_cnt
+    # 출력층의 파라미터를 초기화한다.
+    pm_output = alloc_param_pair([prev_cnt, output_cnt])
+
+
+# 순전파를 처리하는 함수이다.
+def forward_neuralnet_hiddens(x):
+    global pm_output, pm_hiddens
+
+    hidden = x
+    hiddens = [x]
+    # 반복문을 통해서 은닉층 별로 hypothesis 진행 후 Relu를 적용한다.
+    for pm_hidden in pm_hiddens:
+        hidden = relu(np.matmul(hidden, pm_hidden['w']) + pm_hidden['b'])
+        hiddens.append(hidden)
+    # 출력층의 결과도 연산을 통해서 추론 연산을 한다.
+    output = np.matmul(hidden, pm_output['w']) + pm_output['b']
+
+    return output, hiddens
+
+
+def backprop_neuralnet_hiddens(G_output, aux):
+    global pm_out, pm_hiddens
+
+    hiddens = aux
+
+    # 은닉층의 순전파 결과를 전치한다.
+    g_output_w_out = hiddens[-1].transpose()
+    # G_output과 전치한 순전파 결과를 곱해서 손실 기울기를 구한다.
+    G_w_out = np.matmul(g_output_w_out, G_output)
+    # G_output의 값들을 다 더해서 손실 기울기를 구한다.
+    G_b_out = np.sum(G_output, axis=0)
+    # 출력층의 가중치를 전치한다.
+    g_output_hidden = pm_output['w'].transpose()
+    # G_output과 전치한 output 층의 가중치를 곱한다.
+    G_hidden = np.matmul(G_output, g_output_hidden)
+    # 출력층의 가중치를 업데이트한다.
+    pm_output['w'] -= learning_rate * G_w_out
+    # 출력층의 bias를 업데이트한다.
+    pm_output['b'] -= learning_rate * G_b_out
+
+    # 반복문을 통해 은닉층 별 가중치와 bias를 업데이트한다.
+    for n in reversed(range(len(pm_hiddens))):
+        # 이전 레이어의 출력값을 통해 G_hidden을 업데이트한다.
+        G_hidden = G_hidden * relu_derv(hiddens[n + 1])
+        # 이전 레이어의 출력값을 전치한다.
+        g_hidden_w_hid = hiddens[n].transpose()
+        # 이전 레이어와 현재 레이어 사이의 손실 기울기를 구한다.
+        G_w_hid = np.matmul(g_hidden_w_hid, G_hidden)
+        # 이전 레이어의 출력값들의 합을 통해서 bias를 구한다.
+        G_b_hid = np.sum(G_hidden, axis=0)
+
+        g_hidden_hidden = pm_hiddens[n]['w'].transpose()
+        G_hidden = np.matmul(G_hidden, g_hidden_hidden)
+        # 해당 레이어의 가중치를 업데이트한다.
+        pm_hiddens[n]['w'] -= learning_rate * G_w_hid
+        # 해당 레이어의 bias를 업데이트한다.
+        pm_hiddens[n]['b'] -= learning_rate * G_b_hid
+
+
+global hidden_config
+
+
+# 설정한 은닉층의 수에 따라 다르게 모델을 정의하는 함수이다.
+def init_model():
+    if hidden_config is not None:
+        print('{}개의 은닉층을 가지는 다층 퍼셉트론이 작동되었습니다.'.format(len(hidden_config)))
+        init_model_hiddens()
+    else:
+        print('1개의 은닉층을 가지는 다층 퍼셉트론이 작동되었습니다.')
+        init_model_hidden1()
+
+
+# 설정한 은닉층의 수에 따라서 다르게 순전파르 수행하는 함수이다.
+def forward_neuralnet(x):
+    if hidden_config is not None:
+        return forward_neuralnet_hiddens(x)
+    else:
+        return forward_neuralnet_hidden1(x)
+
+
+# 설정한 은닉층의 수에 따라서 다르게 역전파를 수행하는 함수이다.
+def backprop_neuralnet(G_output, hiddens):
+    if hidden_config is not None:
+        backprop_neuralnet_hiddens(G_output, hiddens)
+    else:
+        backprop_neuralnet_hidden1(G_output, hiddens)
+
+
+# 은닉층의 상태를 설정해주는 함수이다.
+def set_hidden(info):
+    global hidden_cnt, hidden_config
+    # 전달받은 info가 정수형이면 hidden_cnt에 전달하고 정수가 아니라면 hidden_config에 전달한다.
+    if isinstance(info, int):
+        hidden_cnt = info
+        hidden_config = None
+    else:
+        hidden_config = info
+
+
+# 3장에서 사용한 함수 재사용
+
 # 여러 함수들을 초기화해주는 메인 함수이다.
 def steel_exec(epoch_count=10, mb_size=10, report=1):
     load_steel_dataset()
@@ -22,7 +208,6 @@ def load_steel_dataset():
     global data, input_cnt, output_cnt
     input_cnt, output_cnt = 27, 7
     data = np.asarray(rows, dtype='float32')
-    print(np.shape(data))
 
 
 # 순전파의 후처리를 해주는 함수이다.
@@ -31,6 +216,7 @@ def forward_postproc(output, y):
     entropy = softmax_cross_entropy_with_logits(y, output)
     # entropy의 평균을 통해 loss를 구한다.
     loss = np.mean(entropy)
+
     return loss, [y, output, entropy]
 
 
@@ -94,24 +280,13 @@ def softmax_derv(x, y):
 # 다중 클래스 문제에 주로 사용되는 Softmax Cross Entropy를 구현하는 함수이다.
 def softmax_cross_entropy_with_logits(labels, logits):
     probs = softmax(logits)
-    # 매우 작은 값인 1.0e-10을 더해줌으로 probs가 0이 되어도 log 연산을 진행할 수 있도록 해준다.
+    # 1.0e-10을 더해줌으로 probs가 0이 되어도 log값을 구할 수 있도록 해준다.
     return -np.sum(labels * np.log(probs + 1.0e-10), axis=1)
 
 
 # Softmax Cross Entropy의 편미분을 구하는 함수이다.
 def softmax_cross_entropy_with_logits_derv(labels, logits):
     return softmax(logits) - labels
-
-
-# 앞에서 사용했던 함수를 재사용
-
-# 모델의 가중치를 초기화하는 함수
-def init_model():
-    global weight, bias, input_cnt, output_cnt
-    # 초기 가중치를 정규분포를 갖는 난수로 초기화
-    weight = np.random.normal(RND_MEAN, RND_STD, [input_cnt, output_cnt])
-    # bias는 0으로 초기화
-    bias = np.zeros([output_cnt])
 
 
 # 학습을 진행하는 함수
@@ -129,7 +304,6 @@ def train_and_test(epoch_count, mb_size, report):
             train_x, train_y = get_train_data(mb_size, n)
             # 학습 진행
             loss, acc = run_train(train_x, train_y)
-            # print('epoch:', epoch, '/ mini batch:', n, '/ loss:', loss, '/ acc:', acc)
             losses.append(loss)
             accs.append(acc)
         # 일정 구간마다 학습 결과를 출력하도록 설정
@@ -145,7 +319,7 @@ def train_and_test(epoch_count, mb_size, report):
 # 미니배치를 설정해주는 함수
 def arrange_data(mb_size):
     global data, shuffle_map, test_begin_idx
-    # 데이터의 수 만큼 랜덤한 번호들 생성 ( 전역변수라 다른 함수에서도 사용)
+    # 데이터의 수 만큼 랜덤한 번호들 생성 (전역변수라 다른 함수에서도 사용)
     shuffle_map = np.arange(data.shape[0])
     # 랜덤한 번호들을 섞어준다.
     np.random.shuffle(shuffle_map)
@@ -173,7 +347,6 @@ def get_train_data(mb_size, nth):
         np.random.shuffle(shuffle_map[:test_begin_idx])
     # 전체 데이터의 80%를 학습 데이터로 사용
     train_data = data[shuffle_map[mb_size * nth:mb_size * (nth + 1)]]
-
     return train_data[:, :-output_cnt], train_data[:, -output_cnt:]
 
 
@@ -205,33 +378,12 @@ def run_test(x, y):
     return accuracy
 
 
-# 순전파를 처리하는 함수
-def forward_neuralnet(x):
-    global weight, bias
-    # y = wx + b 형식의 간단한 hypothesis식으로 추론 연산
-    output = np.matmul(x, weight) + bias
-    return output, x
-
-
-# 역전파를 처리하는 함수
-def backprop_neuralnet(G_output, x):
-    global weight, bias
-    # x는 순전파에서 사용된 입력값이다
-    g_output_w = x.transpose()
-    # 손실 기울기와 x를 연산하여 weight의 손실 기울기를 구한다. (잘 이해가 안간다 역전파의 수식적 내용을 다시 읽어봐야겠다)
-    G_w = np.matmul(g_output_w, G_output)
-    # G_output값들을 다 더해서 bias의 손실 기울기 구한다
-    G_b = np.sum(G_output, axis=0)
-    # 파라미터인 weight와 bias를 업데이트한다.
-    weight -= learningrate * G_w
-    bias -= learningrate * G_b
-
-
 np.random.seed(1234)
 
 RND_MEAN = 0
 RND_STD = 0.003
 
-learningrate = 0.0001
+learning_rate = 0.00001
 
-steel_exec(epoch_count=100, report=10)
+set_hidden([12, 6, 4])
+steel_exec(epoch_count=1000, report=10)
