@@ -247,4 +247,3 @@ class MlpModel(Model):
         estimate = self.dataset.get_estimate(output)
 
         return estimate
-
