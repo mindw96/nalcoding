@@ -1,5 +1,8 @@
 import numpy as np
 
+import mathutil
+
+
 # 데이터셋을 만들고 여러 기능을 사용할 수 있게 해줄 클레스를 선언한다.
 class Dataset(object):
     # 매개 변수로 전달된 데이터셋의 이름과 모드값을 선언한다.
@@ -23,10 +26,14 @@ class Dataset(object):
         # 종료 인덱스를 설정한다.
         to_idx = (nth + 1) * batch_size
         # 인덱스를 통해 데이터셋의 범위를 통해 슬라이싱한다.
-        tr_X = self.tr_sx[self.indices[from_idx:to_idx]]
+        tr_X = self.tr_xs[self.indices[from_idx:to_idx]]
         tr_Y = self.tr_ys[self.indices[from_idx:to_idx]]
 
         return tr_X, tr_Y
+
+    #   테스트에 사용할 데이터를 설정하는 함수이다.
+    def get_test_data(self):
+        return self.te_xs, self.te_ys
 
     # 학습 데이터를 섞어주는 함ㅁ수이다.
     def shuffle_train_data(self, size):
@@ -35,6 +42,17 @@ class Dataset(object):
 
     # 학습에 사용할 검증 데이터셋을 설정하는 함수이다.
     def get_validate_data(self, count):
+        # 인덱스를 설정하고 렌덤하게 섞습니다.
+        self.va_indices = np.arange(len(self.va_xs))
+        np.random.shuffle(self.va_indices)
+        # 설정한 인덱스를 통해 데이터셋을 슬라이싱 합니다.
+        va_X = self.va_xs[self.va_indices[0:count]]
+        va_Y = self.va_ys[self.va_indices[0:count]]
+
+        return va_X, va_Y
+
+    # 시각화 데이터는 검증 데이터를 사용한다.
+    def get_visualize_data(self, count):
         # 인덱스를 설정하고 렌덤하게 섞습니다.
         self.va_indices = np.arange(len(self.va_xs))
         np.random.shuffle(self.va_indices)
@@ -63,11 +81,11 @@ class Dataset(object):
         np.random.shuffle(indices)
         # 설정한 인덱스를 통해 슬라이싱을 해서 학습, 검증, 테스트 데이터셋을 설정합니다.
         self.tr_xs = xs[indices[tr_from:tr_to]]
-        self.tr_ys = xs[indices[tr_from:tr_to]]
+        self.tr_ys = ys[indices[tr_from:tr_to]]
         self.va_xs = xs[indices[va_from:va_to]]
-        self.va_ys = xs[indices[va_from:va_to]]
+        self.va_ys = ys[indices[va_from:va_to]]
         self.te_xs = xs[indices[te_from:te_to]]
-        self.te_ys = xs[indices[te_from:te_to]]
+        self.te_ys = ys[indices[te_from:te_to]]
 
         self.input_shape = xs[0].shape
         self.output_shape = ys[0].shape
@@ -88,12 +106,12 @@ class Dataset(object):
             aux = diff
         # 만약 이진 문제라면 sigmoid를 이용하여 loss를 구한다.
         elif mode == 'binary':
-            entropy = sigmoid_cross_entropy_with_logits(y, output)
+            entropy = mathutil.sigmoid_cross_entropy_with_logits(y, output)
             loss = np.mean(entropy)
             aux = [output, y, entropy]
         # 만약 다중 문제라면 softmax를 이용하여 loss를 구한다.
         elif mode == 'select':
-            entropy = softmax_cross_entropy_with_logits(y, output)
+            entropy = mathutil.softmax_cross_entropy_with_logits(y, output)
             loss = np.mean(entropy)
             aux = [output, y, entropy]
 
@@ -123,8 +141,8 @@ class Dataset(object):
             y, output = aux
             shape = output.shape
 
-            g_loss_entropy = np.ones(shape) / np.prod(shpae)
-            g_entropy_output = sigmoid_cross_entropy_with_logits_derv(y, output)
+            g_loss_entropy = np.ones(shape) / np.prod(shape)
+            g_entropy_output = mathutil.sigmoid_cross_entropy_with_logits_derv(y, output)
 
             G_entropy = g_loss_entropy * G_loss
             G_output = g_entropy_output * G_entropy
@@ -134,7 +152,7 @@ class Dataset(object):
             output, y, entropy = aux
 
             g_loss_entropy = 1.0 / np.prod(entropy.shape)
-            g_entropy_output = softmax_cross_entropy_with_logits_derv(y, output)
+            g_entropy_output = mathutil.softmax_cross_entropy_with_logits_derv(y, output)
 
             G_entropy = g_loss_entropy * G_loss
             G_output = g_entropy_output * G_entropy
@@ -159,7 +177,7 @@ class Dataset(object):
             accuracy = np.mean(correct)
         # 만약 모드가 다중 클래스 문제라면 예측값과 레이블을 비교하여 정확도를 구한다.
         elif mode == 'select':
-            estimate = np.argmax(y, axis=1)
+            estimate = np.argmax(output, axis=1)
             answer = np.argmax(y, axis=1)
             correct = np.equal(estimate, answer)
             accuracy = np.mean(correct)
@@ -178,17 +196,17 @@ class Dataset(object):
 
         # 만약 모드가 이진 문제일경우 output을 sigmoid에 통과시킨 후 전달한다.
         elif mode == 'binary':
-            estimate = sigmoid(output)
+            estimate = mathutil.sigmoid(output)
 
         # 만약 모드가 다중 문제일 경우 output을 softmax에 통과시킨 후 전달한다.
         elif mode == 'select':
-            estimate = softmax(output)
+            estimate = mathutil.softmax(output)
 
         return estimate
 
     # 학습 과정 중 정확도를 출력해주는 함수이다.
     def train_prt_result(self, epoch, costs, accs, acc, time1, time2):
-        print('Epoch P{: cost = {:5.3f}, accuracy = {:5.3f}/{:5.3f} ({}/{} secs)'.format(epoch, np.mean(costs),
+        print('Epoch {}: cost = {:5.3f}, accuracy = {:5.3f}/{:5.3f} ({}/{} secs)'.format(epoch, np.mean(costs),
                                                                                          np.mean(accs), acc, time1,
                                                                                          time2))
 

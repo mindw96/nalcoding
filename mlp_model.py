@@ -1,6 +1,6 @@
 # 여러 모델들의 기본 베이스가 될 모델 클래스를 선언한다.
 import time
-
+import mathutil
 import numpy as np
 
 
@@ -69,7 +69,7 @@ class MlpModel(Model):
         return weight, bias
 
     # 모델의 학습을 진행하는 함수이다.
-    def model_train(self, epoch_count=10, batch_size=10, learning_rate=0.001, report=0):
+    def train(self, epoch_count=10, batch_size=10, learning_rate=0.001, report=0):
         self.learning_rate = learning_rate
         # 지정된 학습 횟수를 배치 사이즈로 나눠서 총 진행할 미니배치의 크기를 정한다.
         batch_count = int(self.dataset.train_count / batch_size)
@@ -105,24 +105,24 @@ class MlpModel(Model):
         print('Model {} train ended in {} secs: '.format(self.name, tm_total))
 
     # test를 수행하는 함수를 선언한다.
-    def model_test(self):
+    def test(self):
         # test데이터와 레이블을 불러온다.
         test_x, test_y = self.dataset.get_test_data()
         time1 = int(time.time())
         # 정확도를 측정한다.
         acc = self.eval_accuracy(test_x, test_y)
         time2 = int(time.time())
-        self.dataset.test_ptr_result(self.name, acc, time2 - time1)
+        self.dataset.test_prt_result(self.name, acc, time2 - time1)
 
     # 모델을 시각화해준다.
-    def model_visualize(self, num):
+    def visualize(self, num):
         print('Model {} Visualization'.format(self.name))
         # 시각화에 사용할 데이터를 불러온다.
         deX, deY = self.dataset.get_visualize_data(num)
         # deX의 추정치를 불러온다.
         est = self.get_estimate(deX)
         # 시각화를 한다.
-        self.dataset.visualizer(deX, est, deY)
+        self.dataset.visualize(deX, est, deY)
 
     # 미니배치 단위 학습을 진행하는 함수이다.
     def train_step(self, x, y):
@@ -176,7 +176,7 @@ class MlpModel(Model):
         y = np.matmul(x, pm['w']) + pm['b']
         # hconfig의 값이 있다면 활성화 함수를 통과시킨다.
         if hconfig is not None:
-            y = relu(y)
+            y = mathutil.relu(y)
 
         return y, [x, y]
 
@@ -185,7 +185,7 @@ class MlpModel(Model):
         x, y = aux
         # hconfig의 값이 있다면 Relu의 미분함수를 통과시킨다.
         if hconfig is not None:
-            G_y = relu_derv(y) * G_y
+            G_y = mathutil.relu_derv(y) * G_y
         # 가중치 편미분 연산을 위해서 원본 x을 전치한다.
         g_y_weight = x.transpose()
         # 입력값의 연산을 위해서 가중치를 전치한다.
