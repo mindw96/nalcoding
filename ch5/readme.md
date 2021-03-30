@@ -12,6 +12,9 @@ mathutil 파일에서는 활성화 함수나 오차 함수 등 수학적 계산�
 이 파일은 먼저 만든 데이터셋을 상속 받으면서 시각화 기능만 추가했다.  
 클래스가 5개이기 때문에 softmax cross entropy를 사용했다.
 
+# 수정사항
+matplotlib를 활용해서 그림을 그릴때 subplot의 문법이 바뀌어 반복문마다 subplot을 그리도록 설정했다.
+
 
 ## 캐글 사이트에서 꽃 분류 데이터셋 다운받기
 꽃 분류 데이터셋 접근 경로는 https://www.kaggle.com/alxmamaev/flowers-recognition 입니다.<br/>
