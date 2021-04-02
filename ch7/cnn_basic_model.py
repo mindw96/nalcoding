@@ -65,7 +65,7 @@ class CnnBasicModel(AdamModel):
         # output 값의 원소의 개수를 구한다.
         output_cnt = self.get_conf_param(hconfig, 'width', hconfig)
         # 가중치와 bias를 초기화한다.
-        weight = np.random(0, self.rand_std, [input_cnt, output_cnt])
+        weight = np.random.normal(0, self.rand_std, [input_cnt, output_cnt])
         bias = np.zeros([output_cnt])
 
         return {'w': weight, 'b': bias}, [output_cnt]
@@ -77,11 +77,12 @@ class CnnBasicModel(AdamModel):
         # 입력 레이어의 값들을 언팩킹한다.
         xh, xw, xchn = input_shape
         # 커널의 파라미터 정보를 받아온다.
-        kh, kw = self.get_conf_param_2d(hconfig, 'chn')
+        kh, kw = self.get_conf_param_2d(hconfig, 'ksize')
+        print(hconfig)
         # 파라미터의 정보를 받아온다.
         ychn = self.get_conf_param(hconfig, 'chn')
         # 커널의 초기값을 설정한다.
-        kernel = np.random.normal(0, self.rand_std, [kh, kw, xchn, ychn])
+        kernel = np.random.normal(0.0, self.rand_std, [kh, kw, xchn, ychn])
         # bias의 초기값을 설정한다.
         bias = np.zeros([ychn])
         # 시각화 옵션이 있으면 시각화를 위해 별도로 관리한다.
@@ -91,7 +92,21 @@ class CnnBasicModel(AdamModel):
         return {'k': kernel, 'b': bias}, [xh, xw, ychn]
 
     # pooling 레이어의 파라미터를 할당해주는 함수이다.
-    def alloc_pool_layer(self, input_shape, hconfig):
+    def alloc_max_layer(self, input_shape, hconfig):
+        # 입력 레이어의 차원 수를 확인한다.
+        assert len(input_shape) == 3
+        # 입력 레이어를 언팩킹한다.
+        xh, xw, xchn = input_shape
+        # 파라미터의 정보를 얻어온다.
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride')
+
+        assert xh % sh == 0
+        assert xw % sw == 0
+
+        return {}, [xh // sh, xw // sw, xchn]
+
+    # pooling 레이어의 파라미터를 할당해주는 함수이다.
+    def alloc_avg_layer(self, input_shape, hconfig):
         # 입력 레이어의 차원 수를 확인한다.
         assert len(input_shape) == 3
         # 입력 레이어를 언팩킹한다.
@@ -287,9 +302,9 @@ class CnnBasicModel(AdamModel):
         kh, kw, _, ychn = pm['k'].shape
 
         # 커널이 이미지를 벗어나는 범위를 해결하기 위한 버퍼의 크기까지 구한뒤 차원축소한 값을 구한다.
-        x_flat = get_ext_regions_for_conv(x, kh, kw)
+        x_flat = self.get_ext_regions_for_conv(x, kh, kw)
         # 커널의 차원을 2차원으로 축소한다.
-        k_flat = pm['k'].reshape([kh*kw*xchn, ychn])
+        k_flat = pm['k'].reshape([kh * kw * xchn, ychn])
         # 축소한 버퍼가 포함된 데이터와 축소된 커널을 행렬곱으로 연산하여 convolution 연산 값을 구한다.
         conv_flat = np.matmul(x_flat, k_flat)
         # 합성곱 연산값을 다시 4차원으로 늘려준다.
@@ -301,3 +316,187 @@ class CnnBasicModel(AdamModel):
             self.maps.append(y)
 
         return y, [x_flat, k_flat, x, y]
+
+    # convolution layer의 역전파를 처리하는 함수이다.
+    def backprop_conv_layer(self, G_y, hconfig, pm, aux):
+        x_falt, k_flat, x, y = aux
+
+        kh, kw, xchn, ychn = pm['k'].shape
+        mb_size, xh, xw, _ = G_y.shape
+        # 활성화 함수의 미분을 통해 G_y와 y의 손실 기울기 값을 구한다.
+        G_conv = self.activate_derv(G_y, y, hconfig)
+        # 채널 수 대로 2차원 형태로 차원 축소한다.
+        G_conv_flat = G_conv.reshape(mb_size * xh * xw, ychn)
+        # 행렬곱 연산을 위해서 전치한다.
+        g_conv_k_flat = x_falt.transpose()
+        g_conv_x_flat = k_flat.transpose()
+        # 행렬곱 연산을 통해서 손실 기울기 값을 구한다.
+        G_k_flat = np.matmul(g_conv_k_flat, G_conv_flat)
+        G_x_flat = np.matmul(G_conv_flat, g_conv_x_flat)
+        G_bias = np.sum(G_conv_flat, axis=0)
+        # 손실 기울기 값을 다시 4차원으로 만든다.
+        G_kernel = G_k_flat.reshape([kh, kw, xchn, ychn])
+        G_input = self.undo_ext_regions_for_conv(G_x_flat, x, kh, kw)
+        # 파라미터를 업데이트한다.
+        self.update_param(pm, 'k', G_kernel)
+        self.update_param(pm, 'b', G_bias)
+
+        return G_input
+
+    # 입력데이터의 버퍼까지 고려한 확장과 차원 축소를 수행한다.
+    def get_ext_regions_for_conv(self, x, kh, kw):
+        mb_size, xh, xw, xchn = x.shape
+
+        regs = self.get_ext_regions(x, kh, kw, 0)
+        regs = regs.transpose([2, 0, 1, 3, 4, 5])
+        # 합성곱 연산을 위해 2차원으로 형태를 수정한다.
+        return regs.reshape([mb_size * xh * xw, kh * kw * xchn])
+
+    # 커널이 이미지 밖까지 나가는 문제를 해결하기 위해 넘어가는 부분까지 크기를 확장시켜주는 함수이다.
+    def get_ext_regions(self, x, kh, kw, fill):
+        mb_size, xh, xw, xchn = x.shape
+        # 커널이 밖으로 나갔을 때 최고 길이를 구한다.
+        eh, ew = xh + kh - 1, xw + kw - 1
+        # 커널의 중앙 위치를 구한다.
+        bh, bw = (kh - 1) // 2, (kw - 1) // 2
+        # 0이 아닌 fill로 채워진 버퍼를 생성한다.
+        x_ext = np.zeros((mb_size, eh, ew, xchn), dtype='float32') + fill
+        # 확장된 영역 가운데에 입력 데이터를 넣는다.
+        x_ext[:, bh:bh + xh, bw:bw + xw, :] = x
+
+        regs = np.zeros((xh, xw, mb_size * kh * kw * xchn), dtype='float32')
+        # 2차원 반복문을 통해 입력 데이터의 모든 값을 순서대로 convolution 연산한다.
+        for r in range(xh):
+            for c in range(xw):
+                regs[r, c, :] = x_ext[:, r:r + kh, c:c + kw, :].flatten()
+
+        return regs.reshape([xh, xw, mb_size, kh, kw, xchn])
+
+    # ext_regions_for_conv()함수의 역전파를 진행하는 함수로 반대 방향으로 구성되어있다.
+    def undo_ext_regions_for_conv(self, regs, x, kh, kw):
+        mb_size, xh, xw, xchn = x.shape
+
+        regs = regs.reshape([mb_size, xh, xw, kh, kw, xchn])
+        regs = regs.transpose([1, 2, 0, 3, 4, 5])
+
+        return self.undo_ext_regions(regs, kh, kw)
+
+    # get_ext_regions() 함수의 역전파를 진행하는 함수로 반대 순서로 구성되어있다.
+    def undo_ext_regions(self, regs, kh, kw):
+        xh, xw, mb_size, kh, kw, xchn = regs.shape
+
+        eh, ew = xh + kh - 1, xw + kw - 1
+        bh, bw = (kh - 1) // 2, (kw - 1) // 2
+
+        gx_ext = np.zeros([mb_size, eh, ew, xchn], dtype='float32')
+
+        for r in range(xh):
+            for c in range(xw):
+                gx_ext[:, r:r + kh, c:c + kw, :] += regs[r, c]
+
+        return gx_ext[:, bh:bh + xh, bw:bw + xw, :]
+
+    # average pooling을 진행하는 함수이다.
+    def forward_avg_layer(self, x, hconfig, pm):
+        mb_size, xh, xw, chn = x.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride')
+        yh, yw = xh // sh, xw // sw
+
+        # 입력데이터 x를 6차원 데이터로 형태를 변환한다.
+        x1 = x.reshape([mb_size, yh, sh, yw, sw, chn])
+        # 변환한 x의 차원의 순서를 재배치한다.
+        x2 = x1.transpose(0, 1, 3, 5, 2, 4)
+        # 2차원으로 다시 형태를 변환한다.
+        x3 = x2.reshape([-1, sh * sw])
+        # 평균 연산을 통해서 [mb_size X yh X yw X chn] 형태의 평균값 벡터를 구한다.
+        y_flat = np.average(x3, 1)
+        # 평균값을 구한것을 다시 4차원으로 형태를 변환한다.
+        y = y_flat.reshape([mb_size, yh, yw, chn])
+
+        if self.need_maps:
+            self.maps.append(y)
+
+        return y, None
+
+    # average pooling layer의 역전파를 해주는 함수로 반대 순서로 진행한다.
+    def backprop_avg_layer(self, G_y, hconfig, pm, aux):
+        mb_size, yh, yw, chn = G_y.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride')
+        xh, xw = yh * sh, yw * sw
+
+        gy_flat = G_y.flatten() / (sh * sw)
+        gx1 = np.zeros([mb_size * yh * yw * chn, sh * sw], dtype='float32')
+
+        for i in range(sh * sw):
+            gx1[:, i] = gy_flat
+        gx2 = gx1.reshape([mb_size, yh, yw, chn, sh, sw])
+        gx3 = gx2.transpose([0, 1, 4, 2, 5, 3])
+
+        G_input = gx3.reshape([mb_size, xh, xw, chn])
+
+        return G_input
+
+    # max pooling 연산을 하는 함수이다.
+    def forward_max_layer(self, x, hconfig, pm):
+        mb_size, xh, xw, chn = x.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride')
+        yh, yw = xh // sh, xw // sw
+        # x를 6차원으로 형태를 변환한다.
+        x1 = x.reshape([mb_size, yh, sh, yw, sw, chn])
+        # 변환한 x의 차원의 순서를 재배치한다.
+        x2 = x1.transpose(0, 1, 3, 5, 2, 4)
+        # [mb_size X yh X yw X chn, sh X sw] 형식의 2차원으로 형태를 변환한다.
+        x3 = x2.reshape([-1, sh * sw])
+        # x3의 최대값들의 인덱스들을 뽑아낸다.
+        idxs = np.argmax(x3, axis=1)
+        # 인덱스들을 통해서 가장 큰 값들만 따로 계산하여 y_flat을 구한다.
+        y_flat = x3[np.arange(mb_size * yh * yw * chn), idxs]
+        # 4차원 형태로 변환한다.
+        y = y_flat.reshape([mb_size, yh, yw, chn])
+
+        if self.need_maps:
+            self.maps.append(y)
+
+        return y, idxs
+
+    #
+    def backprop_max_layer(self, G_y, hconfig, pm, aux):
+        idxs = aux
+
+        mb_size, yh, yw, chn = G_y.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride')
+        xh, xw = yh * sh, yw * sw
+
+        gy_flat = G_y.flatten()
+
+        gx1 = np.zeros([mb_size * yh * yw * chn, sh * sw], dtype='float32')
+        gx1[np.arange(mb_size * yh * yw * chn), idxs] = gy_flat[:]
+        gx2 = gx1.reshape([mb_size, yh, yw, chn, sh, sw])
+        gx3 = gx2.transpose([0, 1, 4, 2, 5, 3])
+
+        G_input = gx3.reshape([mb_size, xh, xw, chn])
+
+        return G_input
+
+    #
+    def visualize(self, num):
+        print('Model {} Visualization'.format(self.name))
+
+        self.need_maps = self.show_maps
+        self.maps = []
+
+        deX, deY = self.dataset.get_visualize_data(num)
+        est = self.get_estimate(deX)
+
+        if self.show_maps:
+            for kernel in self.kernels:
+                kh, kw, xchn, ychn = kernel.shape
+                grids = kernel.reshape([kh, kw, -1]).transpose(2, 0, 1)
+                mathutil.draw_images_horz(grids[0:5, :, :])
+
+            for pmap in self.maps:
+                mathutil.draw_images_horz(pmap[:, :, :, 0])
+
+        self.dataset.visualize(deX, est, deY)
+        self.need_maps = False
+        self.maps = None
