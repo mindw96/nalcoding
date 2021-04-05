@@ -10,10 +10,14 @@ Noise 주입은 임의의 Noise를 구해서 + 연산으로 원래 값에 조금
 파라미터를 시각해보면 각 정규화의 효과를 쉽게 확인 할 수 있다.  
 L1의 경우 기존 종모양에서 비틀린 삼각형에 가깝게 변화하고 0에 가까운 값들이 증가해 가운데 선이 생기는 모습이다.  
 L2의 경우 기존 종모양을 양 옆에서 누른 모양으로 최대값과 최소값 양 끝쪽의 값들이 줄어들고 0에 가까운 값들이 늘어났다.  
-DropOut의 경우 기존 종모양이 아닌 정규분포를 따르는 모양을 보였다.
-Batch Normalization의 경우는 DropOut과 마찬가지로 정규분포에 가깝게 파라미터들이 재배치됐다.  
-Noise 주입 기법 역시 정규분포 모양을 하지만 좀 더 낮게 퍼진 산 모양이었다.  
+DropOut의 경우 기존 종모양보다 더 정규분포 형태의 모양을 보였다.
+Batch Normalization의 경우는 부분적으로 수직화됐다. 직각의 형태를 보인다.  
+Noise 주입 기법은 큰 차이가 없다. 
 
-![Alt text](/ch8/img/mlp_og.png)
+<img src="/ch8/img/mlp_og.png" width="40%" height="30%" title="원본"></img>  
+<img src="/ch8/img/mlp_l1.png" width="40%" height="30%" title="L1 규제"></img>  
+<img src="/ch8/img/mlp_l2.png" width="40%" height="30%" title="L2 규제"></img>  
+<img src="/ch8/img/mlp_dropout.png" width="40%" height="30%" title="DopOut"></img>  
+<img src="/ch8/img/mlp_batch_normalization.png" width="40%" height="30%" title="Batch_Normalization"></img>  
+<img src="/ch8/img/mlp_noise.png" width="40%" height="30%" title="Noise Injection"></img>  
 
-<img src="/ch8/img/mlp_og.png" width="40%" height="30%" title="원본"></img>
