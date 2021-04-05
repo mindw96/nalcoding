@@ -124,7 +124,7 @@ class CnnRegModel(CnnBasicModel):
         # 학습 모드이고 랜덤값이 노이즈 비율보다 낮다면
         if self.is_training and np.random.random() < pm['ratio']:
             # mean과 std 파라미터로 x 형태의 랜덤 값들을 생성해서 noise를 정의한다.
-            noise = np.random.random(pm['mean'], pm['std'], x.shape)
+            noise = np.random.normal(pm['mean'], pm['std'], x.shape)
             # x에 noise를 추가해서 반환한다.
             return x + noise, None
         # 학습 모드가 아니거나 랜덤값이 노이즈 비율보다 높다면 원본을 반환한다.

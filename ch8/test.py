@@ -42,5 +42,5 @@ cnn_noise = [['noise', {'type': 'normal', 'mean': 0, 'std': noise_std}],
              ['conv', {'ksize': 3, 'chn': 24}],
              ['avg', {'stride': 3}]]
 
-fcnn1 = CnnRegModel('flowers_cnn_dropout', fd, cnn_dropout)
+fcnn1 = CnnRegModel('flowers_cnn_noise', fd, cnn_noise)
 fcnn1.exec_all(epoch_count=10, report=1, show_params=True)
