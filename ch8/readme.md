@@ -13,3 +13,7 @@ L2의 경우 기존 종모양을 양 옆에서 누른 모양으로 최대값과 
 DropOut의 경우 기존 종모양이 아닌 정규분포를 따르는 모양을 보였다.
 Batch Normalization의 경우는 DropOut과 마찬가지로 정규분포에 가깝게 파라미터들이 재배치됐다.  
 Noise 주입 기법 역시 정규분포 모양을 하지만 좀 더 낮게 퍼진 산 모양이었다.  
+
+![Alt text](/ch8/img/mlp_og.png)
+
+<img src="/ch8/img/mlp_og.png" width="40%" height="30%" title="원본"></img>

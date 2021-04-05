@@ -16,10 +16,10 @@ class CnnRegModel(CnnBasicModel):
     def exec_all(self, epoch_count=10, batch_size=10, learning_rate=0.001, report=0, show_cnt=3, show_params=False):
         super(CnnRegModel, self).exec_all(epoch_count, batch_size, learning_rate, report, show_cnt)
         if show_params:
-            self.show_param_dist()
+            self.show_param_dist(self.name)
 
     # 파라미터 값의 분포를 보여주는 함수이다.
-    def show_param_dist(self):
+    def show_param_dist(self, name):
         # fully connected layer의 파라미터들을 불러온다.
         params = self.collect_params()
         # 파라미터들의 평균을 구한다.
@@ -31,6 +31,7 @@ class CnnRegModel(CnnBasicModel):
         plt.text(0.08, 15.0, 'mu={:5.3f}'.format(mu))
         plt.text(0.08, 13.0, 'sigma={:5.3f}'.format(sigma))
         plt.grid(True)
+        plt.title(name)
         plt.show()
 
         total_count = len(params)
