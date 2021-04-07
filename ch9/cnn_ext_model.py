@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 
 from ch8.cnn_reg_model import CnnRegModel
@@ -201,7 +203,7 @@ class CnnExtModel(CnnRegModel):
 
         # 이전 레이어 이후의 레이어들을 반복문을 통해서 순차적으로 처리한다.
         for n, bconfig in enumerate(hconfig[3:]):
-            by, baux = self.forward_layer(x, bconfig, pm['pms'][n+1])
+            by, baux = self.forward_layer(x, bconfig, pm['pms'][n + 1])
             # 순전파 결과들을 더해준다. tile_add_result 함수를 통해서 차원을 통일시켜서 차원이 맞지 않는 오류를 해결한다.
             y += self.tile_add_result(by, y.shape[-1], by.shape[-1])
             # 각 레이어의 순전파 결과들을 각 리스트에 추가한다.
@@ -273,5 +275,201 @@ class CnnExtModel(CnnRegModel):
         # times를 축으로 sum 연산을 통해서 G_y를 다 더해줌으로 손실기울기 값을 구한다.
         return np.sum(G_y.reshape(split_shape), axis=-2)
 
+    # 반복 레이어의 특징은 같은 내용이 반복되는 경우 1개의 레이어만 선언하고 반복을 가능하도록 해준다.
 
+    # 반복 레이어의 파라미터를 할당해주는 함수이다.
+    def alloc_loop_layer(self, input_shape, hconfig):
+        pm_hiddens = []
+        prev_shape = input_shape
 
+        if not isinstance(hconfig[1], dict):
+            hconfig.insert(1, {})
+
+        for n in range(self.get_conf_param(hconfig, 'repeat', 1)):
+            pm_hidden, prev_shape = self.alloc_layer_param(prev_shape, hconfig[2])
+            pm_hiddens.append(pm_hidden)
+
+        return {'pms': pm_hiddens}, prev_shape
+
+    # 반복 레이어의 순전파를 처리하는 함수이다.
+    def forward_loop_layer(self, x, hconfig, pm):
+        hidden = x
+        aux_layers = []
+        # report의 값 만큼 레이어를 반복한다.
+        for n in range(self.get_conf_param(hconfig, 'repeat', 1)):
+            hidden, aux = self.forward_layer(hidden, hconfig[2], pm['pms'][n])
+            aux_layers.append(aux)
+
+        return hidden, aux_layers
+
+    # 반복 레이어의 역전파를 처리하는 함수이다.
+    def backprop_loop_layer(self, G_y, hconfig, pm, aux):
+        G_hidden = G_y
+        aux_layers = aux
+        # repeat의 값 만큼 레이어를 반복하는데 인덱스를 뒤에서 부터 넣는다.
+        for n in reversed(range(self.get_conf_param(hconfig, 'repeat', 1))):
+            pm_hidden, aux = pm['pms'][n], aux_layers[n]
+            G_hidden = self.backprop_layer(G_hidden, hconfig[2], [pm_hidden, aux])
+
+        return G_hidden
+
+    # 사용자 정의 레이어는 여러가지 레이어들을 묶어서 매크로로 처리하여 간편하게 사용할 수 있는 함수이다. Residual Block을 쉽게 만들고 사용할 수 있다.
+
+    # 사용자 정의 레이어의 파라미터를 할당해주는 함수이다.
+    def alloc_custom_layer(self, input_shape, hconfig):
+        # 매크로로 지정할 이름을 선언한다.
+        name = self.get_conf_param(hconfig, 'name')
+        # 매크로에 구성될 레이어들을 선언한다.
+        args = self.get_conf_param(hconfig, 'args', {})
+        # 이름과 구성 레이어를 통해 매크로를 설정해준다.
+        macro = CnnExtModel.get_macro(name, args)
+
+        pm_hidden, output_shape = self.alloc_layer_param(input_shape, macro)
+
+        return {'pm': pm_hidden, 'macro': macro}, output_shape
+
+    # 사용자 정의 레이어의 순전파를 처리하는 함수이다.
+    def forward_custom_layer(self, x, hconfig, pm):
+        return self.forward_layer(x, pm['macro'], pm['pm'])
+
+    # 사용자 정의 레이어의 역전파를 처리하는 함수이다.
+    def backprop_layer(self, G_y, hconfig, pm, aux):
+        return self.backprop_layer(G_y, pm['macro'], pm['pm'], aux)
+
+    # 매크로를 등록해주는 함수이다.
+    def set_macro(self, name, config):
+        # config를 name으로 매크로 등록한다.
+        CnnExtModel.macros[name] = config
+
+    # 매크로를 조회해주는 함수이다.
+    def get_macro(self, name, args):
+        # 매크로를 깊은 복사를 통해 불러온다.
+        restored = copy.deepcopy(CnnExtModel.macros[name])
+        # 재귀 구조를 통해서 모든 레이어를 조회할 수 있도록 한다.
+        self.replace_arg(restored, args)
+
+        return restored
+
+    # 매크로의 내용으로 레이어들을 바꿔주는 함수이다.
+    def replace_arg(self, exp, args):
+        # 만약 exp의 값이 리스트나 튜플이라면
+        if isinstance(exp, (list, tuple)):
+            # 반복문을 통해서 모든 레이어를 돌린다.
+            for n, term in enumerate(exp):
+                # 현재 레이어의 이름이 string이고 첫번째 값이 #이라면
+                if isinstance(term, str) and term[0] == '#':
+                    # 그리고 두번째도 #이라면 첫번째 값을 삭제한다.
+                    if term[1] == '#':
+                        exp[n] = term[1:]
+                    # 만약 두번째 값이 #이 아니고 레이어의 이름이 args에 있다면
+                    elif term in args:
+                        # 현재 레이어의 내용은 매크로로 대체한다.
+                        exp[n] = args[term]
+                # 만약 string이 아니거나 #이 아니라면
+                else:
+                    # 재귀 함수를 통해 다음 값으로 이동한다.
+                    self.replace_arg(term, args)
+
+        # 만약 딕셔너리 형태라면 키 값을 통해서 조회한다.
+        elif isinstance(exp, dict):
+            for key in exp:
+                if isinstance(exp[key], str) and exp[key][0] == '#':
+                    if exp[key][1] == '#':
+                        exp[key] = exp[key][1:]
+                    elif exp[key] in args:
+                        exp[key] = args[exp[key]]
+                else:
+                    self.replace_arg(exp[key], args)
+
+    # 기존 합성곱 연산 파라미터 할당 함수에 몇가지 기능을 추가한 함수이다.
+    def alloc_conv_layer(self, input_shape, hconfig):
+        pm, output_shape = super(CnnExtModel, self).alloc_conv_layer(input_shape, hconfig)
+
+        pm['actions'] = self.get_conf_param(hconfig, 'actions', 'LA')
+        for act in pm['actions']:
+            if act == 'L':
+                input_shape = output_shape
+            # 하이퍼 파라미터를 통해 Batch Normalization을 사용할 수 있다.
+            elif act == 'B':
+                bn_config = ['batch_normal', {'rescale': False}]
+                pm['bn'], _ = self.alloc_batch_normal_layer(input_shape, bn_config)
+
+        xh, xw, xchn = input_shape
+        ychn = self.get_conf_param(hconfig, 'chn')
+        # Stride 기능을 추가하였다.
+        output_shape = self.eval_stride_shape(hconfig, True, xh, xw, ychn)
+
+        return pm, output_shape
+
+    # 기존 합성곱 레이어의 순전파 처리 함수에 몇가지 기능을 추가하였다.
+    def forward_conv_layer(self, x, hconfig, pm):
+        y = x
+        x_flat, k_flat, relu_y, aux_bn = None, None, None, None
+        # actions 파라미터의 순서대로 순차적으로 진행한다.
+        for act in pm['actions']:
+            # 만약 선형 연산 모드라면
+            if act == 'L':
+                # 레이블의 각 차원의 크기를 언팩킹한다.
+                mb_size, xh, xw, xchn = y.shape
+                # 커널의 각 차원의 크기를 언팩킹한다.
+                kh, kw, _, ychn = pm['k'].shape
+                # 차원을 축소하여 행렬곱연산을 하는 Convolution 연산을 수행한다.
+                x_flat = self.get_ext_regions_for_conv(y, kh, kw)
+                k_flat = pm['k'].reshape([kh * kw * xchn, ychn])
+                conv_flat = np.matmul(x_flat, k_flat)
+                y = conv_flat.reshape([mb_size, xh, xw, ychn] + pm['b'])
+            # 만약 비선형 활성화 함수라면
+            elif act == 'A':
+                # 활성화 함수를 통과시킨다.
+                y = self.activate(y, hconfig)
+                relu_y = y
+            # 만약 배치 정규화라면
+            elif act == 'B':
+                # Batch Normaliztion을 수행한다.
+                y, aux_bn = self.forward_batch_normal_layer(y, None, pm['bn'])
+
+        # Stride 연산을 수행한다.
+        y, aux_stride = self.stride_filter(hconfig, True, y)
+
+        if self.need_maps:
+            self.maps.append(y)
+
+        return y, [x_flat, k_flat, relu_y, aux_bn, aux_stride]
+
+    # 합성곱 연산의 역전파를 처리하는 함수에 몇가지 기능을 추가했다.
+    def backprop_conv_layer(self, G_y, hconfig, pm, aux):
+        x_flat, k_flat, x, relu_y, aux_bn, aux_stride = aux
+
+        G_x = self.stride_filter_derv(hconfig, True, G_y, aux_stride)
+
+        for act in reversed(pm['actions']):
+            if act == 'L':
+                kh, kw, xchn, ychn = pm['k'].shape
+                mb_size, xh, xw, _ = G_x.shape
+
+                G_conv_flat = G_x.reshape(mb_size * xh * xw, ychn)
+                g_conv_k_flat = x_flat.transpose()
+                g_conv_x_flat = k_flat.transpose()
+                G_k_flat = np.matmul(g_conv_k_flat, G_conv_flat)
+                G_x_flat = np.matmul(G_conv_flat, g_conv_x_flat)
+                G_bias = np.sum(G_conv_flat, axis=0)
+                G_kernel = G_k_flat.reshape([kh, kw, xchn, ychn])
+                G_x = self.undo_ext_regions_for_conv(G_x_flat, x, kh, kw)
+
+                self.update_param(pm, 'k', G_kernel)
+                self.update_param(pm, 'b', G_bias)
+
+            elif act == 'A':
+                G_x = self.activate_derv(G_x, relu_y, hconfig)
+            elif act == 'B':
+                G_x = self.backprop_batch_normal_layer(G_x, None, pm['bn'], aux_bn)
+
+        return G_x
+
+    # Max Pooling 레이어의 파라미터를 할당해주는 함수이다.
+    def alloc_max_layer(self, input_shape, hconfig):
+        xh, xw, ychn = input_shape
+        # Stride를 적용한 크기를 출력값의 크기로 설정한다.
+        output_shape = self.eval_stride_shape(hconfig, False, xh, xw, ychn)
+
+        return None, output_shape
