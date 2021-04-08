@@ -473,3 +473,200 @@ class CnnExtModel(CnnRegModel):
         output_shape = self.eval_stride_shape(hconfig, False, xh, xw, ychn)
 
         return None, output_shape
+
+    # 기존 Max Pooling 레이어의 순전파 처리 함수에 몇가지 기능을 추가하였다.
+    def forward_max_layer(self, x, hconfig, pm):
+        mb_size, xh, xw, chn = x.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride', [1, 1])
+        kh, kw = self.get_conf_param_2d(hconfig, 'ksize', [sh, sw])
+        padding = self.get_conf_param(hconfig, 'padding', 'SAME')
+
+        # 만약 sh, sw의 값이 kh, kw가 같고 xh가 sh로 딱 떨어지고 xw가 sw로 딱 떨어지고 SAME 패딩이라면
+        if [sh, sw] == [kh, kw] and xh % sh == 0 and xw % sw == 0 and padding == 'SAME':
+            # Max Pooling 레이어의 결과값을 반환한다.
+            return super(CnnExtModel, self).forward_max_layer(x, hconfig, pm)
+
+        x_flat = self.get_ext_regions(x, kh, kw, -np.inf)
+        x_flat = x_flat.transpose([2, 5, 0, 1, 3, 4])
+        x_flat = x_flat.reshape(mb_size * chn * xh * xw, kh * kw)
+        # 각 출력 픽셀에 대한 최댓값의 위치를 수집한다.
+        max_idx = np.argmax(x_flat, axis=1)
+        # 최대값 인덱스들의 값을 통해 최대값만 추출한다.
+        y = x_flat[np.arange(x_flat.shape[0]), max_idx]
+        y = y.reshape([mb_size, chn, xh, xw])
+        y = y.transpose([0, 2, 3, 1])
+        # Stride를 사용한다.
+        y, aux_stride = self.stride_filter(hconfig, False, y)
+
+        if self.need_maps:
+            self.maps.append(y)
+
+        return y, [x.shape, kh, kw, sh, sw, padding, max_idx, aux_stride]
+
+    # 기존 Max Pooling 레이어의 역전파를 처리 함수에 몇가지 기능을 추가하였다.
+    def backprop_max_layer(self, G_y, hconfig, pm, aux):
+        if not isinstance(aux, list):
+            return super(CnnExtModel, self).backprop_max_layer(G_y, hconfig, pm, aux)
+
+        x_shape, kh, kw, sh, sw, padding, max_idx, aux_stride = aux
+        mb_size, xh, xw, chn, chn = x_shape
+
+        # 순전파에선 마지막으로 Stride를 하기 때문에 역전파에선 제일 먼저 해준다.
+        G_y = self.stride_filter_derv(hconfig, False, G_y, aux_stride)
+
+        G_y = G_y.transpose([0, 3, 1, 2])
+        G_y = G_y.flatten()
+
+        G_x_flat = np.zeros([mb_size * chn * xh * xw, kh * kw])
+        # 최대값이 있는 값들에게만 손실 기울기를 전달해준다.
+        G_x_flat[np.arange(G_x_flat.shape[0]), max_idx] = G_y
+
+        G_x_flat = G_x_flat.reshape(mb_size, chn, xh, xw, kh, kw)
+        G_x_flat = G_x_flat.transpose([2, 3, 0, 4, 5, 1])
+        G_x = self.undo_ext_regions(G_x_flat, kh, kw)
+
+        return G_x
+
+    # Average Pooling 레이어에 새로 기능을 추가하기 위해 파라미터를 추가했다.
+    def alloc_avg_layer(self, input_shape, hconfig):
+        xh, xw, chn = input_shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride', [1, 1])
+        kh, kw = self.get_conf_param_2d(hconfig, 'ksize', [sh, sw])
+        padding = self.get_conf_param(hconfig, 'padding', 'SAME')
+
+        if [sh, sw] == [kh, kw] and xh % sh == 0 and xw % sw == 0 and padding == 'SAME':
+            return super(CnnExtModel, self).alloc_avg_layer(input_shape, hconfig)
+
+        one_mask = np.ones([1, xh, xw, chn])
+
+        m_flat = self.get_ext_regions(one_mask, kh, kw, 0)
+        m_flat = m_flat.transpose([2, 5, 0, 1, 3, 4])
+        m_flat = m_flat.reshape(1 * chn * xh * xw, kh * kw)
+
+        mask = np.sum(m_flat, axis=1)
+
+        output_shape = self.eval_stride_shape(hconfig, False, xh, xw, chn)
+
+        return {'mask': mask}, output_shape
+
+    # 기존 Average Pooling 레이어의 순전파 처리 함수에 몇가지 기능을 추가하였다.
+    def forward_avg_layer(self, x, hconfig, pm):
+        mb_size, xh, xw, chn = x.shape
+        sh, sw = self.get_conf_param_2d(hconfig, 'stride', [1, 1])
+        kh, kw = self.get_conf_param_2d(hconfig, 'ksize', [sh, sw])
+        padding = self.get_conf_param(hconfig, 'padding', 'SAME')
+
+        if [sh, sw] == [kh, kw] and xh % sh == 0 and xw % sw == 0 and padding == 'SAME':
+            return super(CnnExtModel, self).forward_avg_layer(x, hconfig, pm)
+
+        x_flat = self.get_ext_regions(x, kh, kw, 0)
+        x_flat = x_flat.transpose([2, 5, 0, 1, 3, 4])
+        # 2차원으로 축소한다.
+        x_flat = x_flat.reshape(mb_size * chn * xh * xw, kh * kw)
+        # 축소한 X의 합을 구한다.
+        hap = np.sum(x_flat, axis=1)
+        # 합을 구한 X을 mask 파라미터로 나눠서 평균을 구한다.
+        y = np.reshape(hap, [mb_size, -1]) / pm['mask']
+        y = y.reshape([mb_size, chn, xh, xw])
+        y = y.transpose([0, 2, 3, 1])
+
+        y, aux_stride = self.stride_filter(hconfig, False, y)
+
+        if self.need_maps:
+            self.maps.append(y)
+
+        return y, [x.shape, kh, kw, sh, sw, padding, aux_stride]
+
+    # 기존 Average Pooling 레이어의 역전파 처리 함수에 몇가지 기능을 추가하였다.
+    def backprop_avg_layer(self, G_y, hconfig, pm, aux):
+        if not isinstance(aux, list):
+            return super(CnnExtModel, self).backprop_avg_layer(G_y, hconfig, pm, aux)
+
+        x_shape, kh, kw, sh, sw, padding, aux_stride = aux
+        mb_size, xh, xw, chn = x_shape
+
+        G_y = self.stride_filter_derv(hconfig, False, G_y, aux_stride)
+
+        G_y = G_y.transpose([0, 3, 1, 2])
+        G_y = G_y.flatten()
+
+        # Max Pooling과는 다르게 모든 픽셀에 손실기울기를 전달해야한다.
+        G_hap = np.reshape(G_y, [mb_size, -1]) / pm['mask']
+        G_x_flat = np.tile(G_hap, (kh * kw, 1))
+
+        G_x_flat = G_x_flat.reshape(mb_size, chn, xh, xw, kh, kw)
+        G_x_flat = G_x_flat.transpose([2, 3, 0, 4, 5, 1])
+        G_x = self.undo_ext_regions(G_x_flat, kh, kw)
+
+        return G_x
+
+    # Stride의 출력 형태를 정리해주는 함수이다.
+    def eval_stride_shape(self, hconfig, conv_type, xh, xw, ychn):
+        # 커널의 크기와 stride의 길이, padding값을 받는다.
+        kh, kw, sh, sw, padding = self.get_shape_apram(hconfig, conv_type)
+        # 만약 padding 유형이 VALID라면
+        if padding == 'VALID':
+            # 커널의 높이와 길이를 각각 뺀다. VALID 패딩 방식의 경우 이미지 범위를 벗어나는 경우 출력 픽셀을 생성하지 않기 떄문이다.
+            xh = xh - kh + 1
+            xw = xw - kw + 1
+        # Stride의 시작점을 중앙에 위치하도록 한다.
+        yh = xh // sh
+        yw = xw // sw
+
+        return [yh, yw, ychn]
+
+    # Stride 처리를 하는 함수이다.
+    def stride_filter(self, hconfig, conv_type, y):
+        _, xh, xw, _ = x_shape = y.shape
+        nh, nw = xh, xw
+        kh, kw, sh, sw, padding = self.get_shape_params(hconfig, conv_type)
+
+        # Padding의 모드가 VALID라면
+        if padding == 'VALID':
+            # 경계 바깥의 반영되지 않은 부문을 구한 뒤 그 부분만을 y로 설정한다.
+            bh, bw = (kh - 1) // 2, (kw - 1) // 2
+            nh, nw = xh - kh + 1, xw - kw + 1
+            y = y[:, bh:bh + bh, bw:bw + nw:, :]
+
+        # Stride의 보폭의 값이 1이 아니라면 Stride 보폭만큼 연산을 수행한다.
+        if sh != 1 or sw != 1:
+            bh, bw = (sh - 1) // 2, (sw - 1) // 2
+            mh, mw = nh // sh, nw // sw
+            y = y[:, bh:bh + mh * sh:sw, bw:bw + mw * sw:sw, :]
+
+        return y, [x_shape, nh, nw]
+
+    # Stride 처리를 하는 함수의 미분 함수이다.
+    def stride_filter_defv(self, hconfig, conv_type, G_y, aux):
+        x_shape, nh, nw = aux
+        mb_size, xh, xw, chn = x_shape
+        kh, kw, sh, sw, padding = self.get_shape_param(hconfig, conv_type)
+
+        if sh != 1 or sw != 1:
+            bh, bw = (sh - 1) // 2, (sw - 1) // 2
+            mh, mw = nh // sh, nw // sw
+            G_y_tmp = np.zeros([mb_size, nh, nw, chn])
+            G_y_tmp[:, bh:bh + mh * sh:sh, bw:bw + mw * sw:sw, :] = G_y
+            G_y = G_y_tmp
+
+        if padding == 'VALID':
+            bh, bw = (kh - 1) // 2, (kw - 1) // 2
+            nh, nw = xh - kh + 1, xw - kw + 1
+            G_y_tmp = np.zeros([mb_size, xh, xw, chn])
+            G_y_tmp[:, bh:bh + nh, bw:bw + nw:, :] = G_y
+            G_y = G_y_tmp
+
+        return G_y
+
+    #
+    def get_shape_params(self, hconfig, conv_type):
+        if conv_type:
+            kh, kw = self.get_conf_param_2d(hconfig, 'ksize')
+            sh, sw = self.get_conf_param_2d(hconfig, 'stride', [1, 1])
+        else:
+            sh, sw = self.get_conf_param_2d(hconfig, 'stride', [1, 1])
+            kh, kw = self.get_conf_param_2d(hconfig, 'ksize', [sh, sw])
+        padding = self.get_conf_param(hconfig, 'padding', 'SAME')
+
+        return kh, kw, sh, sw, padding
+   
