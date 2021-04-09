@@ -1,4 +1,5 @@
-from  dataset import Dataset
+from dataset import Dataset
+
 
 class DummyDataset(Dataset):
     def __init__(self, name, mode, input_shape, output_shape):

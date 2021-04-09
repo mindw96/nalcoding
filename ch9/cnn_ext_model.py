@@ -35,7 +35,7 @@ class CnnExtModel(CnnRegModel):
                     dump_str += ' ' + name
                 print('{:>{width}}{}'.format('', dump_str, width=self.layer_depth * 2))
             # 레이어 깊이를 1 카운트 한다.
-            self.layer_depth += 1
+            self.layer_depth += 1;
         # 파라미터를 원본 메소드를 호출하여 불러온다.
         pm, output_shape = super(CnnExtModel, self).alloc_layer_param(input_shape, hconfig)
         # 만약 레이어 타입이 다음 중 하나의 경우에 속한다면
@@ -53,7 +53,7 @@ class CnnExtModel(CnnRegModel):
                 # 가중치 파라미터의 형태를 언팩킹한다.
                 ph, pw = pm['w'].shape
                 # 파라미터의 총 개수를 더한다.
-                pm_count = np.prod(['w'].shpae) + pm['b'].shape[0]
+                pm_count = np.prod(pm['w'].shape) + pm['b'].shape[0]
                 # 전체 파라미터 개수를 업데이트한다.
                 self.param_count += pm_count
                 # 파라미터 정보를 버퍼에 입력한다.
@@ -77,7 +77,7 @@ class CnnExtModel(CnnRegModel):
     # 병렬 레이어의 특징은 이전 계층에서 여러가지 합성곱 레이어와 풀링 레이어로 전달한 후 결과를 합하여 다음 레이어로 전달한다는 특징이 있다.
 
     # 병렬 레이어의 파라미터를 할당해주는 함수이다.
-    def alloc_parallel_layer(self, x, input_shape, hconfig):
+    def alloc_parallel_layer(self, input_shape, hconfig):
         pm_hiddens = []
         output_shape = None
         # 만약 hconfig의 두번째 값이 딕셔너리가 아니라면 빈 딕셔너리를 삽입한다.
@@ -163,7 +163,7 @@ class CnnExtModel(CnnRegModel):
         for n in reversed(range(len(hconfig[2:]))):
             sconfig, spm, saux = hconfig[2:][n], pm['pms'][n], auxes[n]
             # 역전파를 레이어수만큼 반복하며 순차적으로 수행하며 파라미터를 업데이트한다.
-            G_hidden = self.backprop_layer((G_hidden, sconfig, spm, saux))
+            G_hidden = self.backprop_layer(G_hidden, sconfig, spm, saux)
 
         # 맨 첫 레이어의 역전파 값을 반환한다.
         return G_hidden
@@ -322,7 +322,7 @@ class CnnExtModel(CnnRegModel):
         # 매크로에 구성될 레이어들을 선언한다.
         args = self.get_conf_param(hconfig, 'args', {})
         # 이름과 구성 레이어를 통해 매크로를 설정해준다.
-        macro = CnnExtModel.get_macro(name, args)
+        macro = self.get_macro(name, args)
 
         pm_hidden, output_shape = self.alloc_layer_param(input_shape, macro)
 
@@ -333,10 +333,11 @@ class CnnExtModel(CnnRegModel):
         return self.forward_layer(x, pm['macro'], pm['pm'])
 
     # 사용자 정의 레이어의 역전파를 처리하는 함수이다.
-    def backprop_layer(self, G_y, hconfig, pm, aux):
+    def backprop_custom_layer(self, G_y, hconfig, pm, aux):
         return self.backprop_layer(G_y, pm['macro'], pm['pm'], aux)
 
     # 매크로를 등록해주는 함수이다.
+    @classmethod
     def set_macro(self, name, config):
         # config를 name으로 매크로 등록한다.
         CnnExtModel.macros[name] = config
@@ -417,7 +418,7 @@ class CnnExtModel(CnnRegModel):
                 x_flat = self.get_ext_regions_for_conv(y, kh, kw)
                 k_flat = pm['k'].reshape([kh * kw * xchn, ychn])
                 conv_flat = np.matmul(x_flat, k_flat)
-                y = conv_flat.reshape([mb_size, xh, xw, ychn] + pm['b'])
+                y = conv_flat.reshape([mb_size, xh, xw, ychn]) + pm['b']
             # 만약 비선형 활성화 함수라면
             elif act == 'A':
                 # 활성화 함수를 통과시킨다.
@@ -434,7 +435,7 @@ class CnnExtModel(CnnRegModel):
         if self.need_maps:
             self.maps.append(y)
 
-        return y, [x_flat, k_flat, relu_y, aux_bn, aux_stride]
+        return y, [x_flat, k_flat, x, relu_y, aux_bn, aux_stride]
 
     # 합성곱 연산의 역전파를 처리하는 함수에 몇가지 기능을 추가했다.
     def backprop_conv_layer(self, G_y, hconfig, pm, aux):
@@ -603,7 +604,7 @@ class CnnExtModel(CnnRegModel):
     # Stride의 출력 형태를 정리해주는 함수이다.
     def eval_stride_shape(self, hconfig, conv_type, xh, xw, ychn):
         # 커널의 크기와 stride의 길이, padding값을 받는다.
-        kh, kw, sh, sw, padding = self.get_shape_apram(hconfig, conv_type)
+        kh, kw, sh, sw, padding = self.get_shape_params(hconfig, conv_type)
         # 만약 padding 유형이 VALID라면
         if padding == 'VALID':
             # 커널의 높이와 길이를 각각 뺀다. VALID 패딩 방식의 경우 이미지 범위를 벗어나는 경우 출력 픽셀을 생성하지 않기 떄문이다.
@@ -637,10 +638,10 @@ class CnnExtModel(CnnRegModel):
         return y, [x_shape, nh, nw]
 
     # Stride 처리를 하는 함수의 미분 함수이다.
-    def stride_filter_defv(self, hconfig, conv_type, G_y, aux):
+    def stride_filter_derv(self, hconfig, conv_type, G_y, aux):
         x_shape, nh, nw = aux
         mb_size, xh, xw, chn = x_shape
-        kh, kw, sh, sw, padding = self.get_shape_param(hconfig, conv_type)
+        kh, kw, sh, sw, padding = self.get_shape_params(hconfig, conv_type)
 
         if sh != 1 or sw != 1:
             bh, bw = (sh - 1) // 2, (sw - 1) // 2

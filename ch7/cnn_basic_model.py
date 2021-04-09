@@ -78,7 +78,6 @@ class CnnBasicModel(AdamModel):
         xh, xw, xchn = input_shape
         # 커널의 파라미터 정보를 받아온다.
         kh, kw = self.get_conf_param_2d(hconfig, 'ksize')
-        print(hconfig)
         # 파라미터의 정보를 받아온다.
         ychn = self.get_conf_param(hconfig, 'chn')
         # 커널의 초기값을 설정한다.
