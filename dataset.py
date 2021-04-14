@@ -138,6 +138,7 @@ class Dataset(object):
 
         # 만약 모드가 이진 모드라면 sigmoid의 편미분 함수를 통해서 미분 값을 구한다.
         elif mode == 'binary':
+            print(aux)
             y, output = aux
             shape = output.shape
 
