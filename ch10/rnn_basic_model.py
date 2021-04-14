@@ -95,7 +95,6 @@ class RnnBasicModel(CnnExtModel):
             for n in range(mb_size):
                 # 출력값을 순서대로 순환벡터들 중 마지막 위치에서 찾는다.
                 output[n] = outputs[lengths[n] - 1][n]
-
         return output, [x, lengths, timesteps, outputs, aux_steps]
 
     # 역전파를 처리하는 함수이다.
@@ -124,7 +123,6 @@ class RnnBasicModel(CnnExtModel):
             for n in range(mb_size):
                 G_outputs[lengths[n]-1, n, :] = G_y[n]
 
-        #
         for n in reversed(range(0, timesteps)):
             G_recurrent += G_outputs[n]
 

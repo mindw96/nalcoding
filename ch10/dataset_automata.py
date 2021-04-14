@@ -181,7 +181,7 @@ class AutomataDataset(Dataset):
         return sent
 
     # 문장이 옳바른 수식 표현인지 검사하는 함수이다.
-    @ classmethod
+    @classmethod
     def automata_is_correct_sent(self, sent):
         sent = sent + '$'
         states, pos, nextch = [0], 0, sent[0]

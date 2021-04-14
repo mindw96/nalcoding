@@ -108,7 +108,7 @@ class Dataset(object):
         elif mode == 'binary':
             entropy = mathutil.sigmoid_cross_entropy_with_logits(y, output)
             loss = np.mean(entropy)
-            aux = [output, y, entropy]
+            aux = [y, output]
         # 만약 다중 문제라면 softmax를 이용하여 loss를 구한다.
         elif mode == 'select':
             entropy = mathutil.softmax_cross_entropy_with_logits(y, output)
