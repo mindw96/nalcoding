@@ -96,7 +96,7 @@ class RnnLstmModel(RnnBasicModel):
 
         return output, [x, lengths, max_length, outputs, aux_steps]
 
-    #
+    # LSTM 레이어의 역전파를 수행하는 함수이다.
     def backprop_lstm_layer(self, G_y, hconfig, pm, aux):
         inseq, outseq, timesteps1, timefeats, recur_size, use_state = pm['info']
         x, lengths, max_length, outputs, aux_steps = aux
@@ -112,6 +112,8 @@ class RnnLstmModel(RnnBasicModel):
             G_x[:, 0, 0 ] = lengths
 
         if outseq:
+            G_outputs = G_y[:, 1:, :].transpose([1, 0, 2])
+        else:
             G_outputs = np.zeros([max_length, mb_size, recur_size])
             for n in range(mb_size):
                 G_outputs[lengths[n]-1, n, :] = G_y[n]
