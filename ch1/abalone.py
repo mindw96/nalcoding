@@ -107,6 +107,7 @@ def get_train_data(mb_size, nth):
         np.random.shuffle(shuffle_map[:test_begin_idx])
     # 전체 데이터의 80%를 학습 데이터로 사용
     train_data = data[shuffle_map[mb_size * nth:mb_size * (nth + 1)]]
+    print(np.shape(train_data), np.shape(shuffle_map[mb_size * nth:mb_size * (nth + 1)]))
     return train_data[:, :-output_cnt], train_data[:, -output_cnt:]
 
 
