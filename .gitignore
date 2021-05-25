@@ -1,3 +1,9 @@
 *.wav
 *.mp4
 *.npy
+
+# 폴더 무시
+ch5/flowers
+ch6/office31
+ch11/urban-sound
+ch13/mnist

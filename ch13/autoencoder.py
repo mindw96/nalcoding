@@ -57,19 +57,19 @@ class Autoencoder(RnnExtModel):
         for epoch in range(epoch_count):
             costs = []
             accs = []
-            self.dataset.shuffle_train_data(batch_size*batch_count)
+            self.dataset.shuffle_train_data(batch_size * batch_count)
             for n in range(batch_count):
                 trX = self.dataset.get_autoencode_data(batch_size, n)
                 cost, acc = self.autoencode_step(trX)
                 costs.append(cost)
                 accs.append(acc)
 
-            if report > 0 and (epoch+1) % report == 0:
+            if report > 0 and (epoch + 1) % report == 0:
                 acc_mean = np.mean(accs)
                 time3 = int(time.time())
                 tm1, tm2 = time3 - time2, time3 - time1
-                self.dataset.train_prt_result(epoch+1, costs,accs, tm1, tm2)
-                time2=time3
+                self.dataset.train_prt_result(epoch + 1, costs, accs, acc, tm1, tm2)
+                time2 = time3
 
         tm_total = int(time.time()) - time1
         if report != 0:
@@ -91,7 +91,7 @@ class Autoencoder(RnnExtModel):
         g_square_diff = 2 * diff
         g_diff_output = 1
 
-        G_loss =1.0
+        G_loss = 1.0
         G_square = g_loss_square * G_loss
         G_diff = g_square_diff * G_square
         G_hidden = g_diff_output * G_diff
@@ -101,3 +101,104 @@ class Autoencoder(RnnExtModel):
         self.is_training = False
 
         return loss, accuracy
+
+    def forward_autoencode(self, x):
+        hidden = x
+        aux_encoder, aux_decoder = [], []
+
+        for n, hconfig in enumerate(self.econfigs):
+            hidden, aux = self.forward_layer(hidden, hconfig, self.pm_encoder[n])
+            aux_encoder.append(aux)
+
+        for n, hconfig in enumerate(self.dconfigs):
+            hidden, aux = self.forward_layer(hidden, hconfig, self.pm_decoder[n])
+            aux_decoder.append(aux)
+
+        return hidden, aux_encoder, aux_decoder
+
+    def backprop_autoencode(self, G_hidden, aux_encoder, aux_decoder):
+        for n in reversed(range(len(self.dconfigs))):
+            hconfig, pm, aux = self.dconfigs[n], self.pm_decoder[n], aux_decoder[n]
+            G_hidden = self.backprop_layer(G_hidden, hconfig, pm, aux)
+
+        for n in reversed(range(len(self.econfigs))):
+            hconfig, pm, aux = self.econfigs[n], self.pm_encoder[n], aux_encoder[n]
+            G_hidden = self.backprop_layer(G_hidden, hconfig, pm, aux)
+
+    def forward_neuralnet(self, x):
+        hidden = x
+
+        aux_encoder = []
+
+        for n, hconfig in enumerate(self.econfigs):
+            hidden, aux = self.forward_layer(hidden, hconfig, self.pm_encoder[n])
+            aux_encoder.append(aux)
+
+        output, aux_layers = super(Autoencoder, self).forward_neuralnet(hidden)
+
+        return output, [aux_encoder, aux_layers]
+
+    def backprop_neuralnet(self, G_output, aux):
+        aux_encoder, aux_layers = aux
+
+        G_hidden = super(Autoencoder, self).backprop_neuralnet(G_output, aux_layers)
+
+        if self.fix_encoder:
+            return G_hidden
+
+        for n in reversed(range(len(self.econfigs))):
+            hconfig, pm, aux = self.econfigs[n], self.pm_encoder[n], aux_encoder[n]
+            G_hidden = self.backprop_layer(G_hidden, hconfig, pm, aux)
+
+        return G_hidden
+
+    def semantic_hasing_index(self):
+        self.hash_data = self.dataset.tr_xs
+        self.hash_table = {}
+
+        hidden = self.hash_data
+        for n, hconfig in enumerate(self.econfigs):
+            hidden, _ = self.forward_layer(hidden, hconfig, self.pm_encoder[n])
+
+        self.bit_weight = [np.power(2, n) for n in range(hidden.shape[-1])]
+
+        for n, code in enumerate(hidden):
+            bin_code = np.around(code)
+            hash_idx = int(np.sum(self.bit_weight * bin_code))
+            if hash_idx not in self.hash_table:
+                self.hash_table[hash_idx] = []
+            self.hash_table[hash_idx].append([n, code])
+
+    def semantic_hasing_search(self, show_cnt=3, max_rank=5):
+        data_cnt, data_size = self.hash_data.shape
+        nths = np.random.randint(data_cnt, size=show_cnt)
+        hidden = self.hash_data[nths]
+        for n, hconfig in enumerate(self.econfigs):
+            hidden, _ = self.forward_layer(hidden, hconfig, self.pm_encoder[n])
+        bin_codes = np.around(hidden)
+        hash_idxs = np.sum(bin_codes * self.bit_weight, axis=1)
+
+        for n in range(show_cnt):
+            fetched = self.hash_table[int(hash_idxs[n])]
+            codes = [lst[1] for lst in fetched]
+            diff = np.sum(np.square(codes - hidden[n]), axis=1)
+            merged = [[lst[0], diff[m]] for m, lst in enumerate(fetched)]
+            merged.sort(key=self.take_diff)
+
+            buffer = np.zeros([max_rank + 1, data_size])
+            buffer[0] = self.hash_data[nths[n]]
+            for k, pair in enumerate(merged):
+                if k >= max_rank:
+                    break
+                buffer[k + 1] = self.hash_data[pair[0]]
+            self.dataset.hash_result_visualize(buffer)
+
+    def take_diff(self, element):
+        return element[1]
+
+    def visualize(self, num):
+        print('Model {} Visualization'.format(self.name))
+        deX, deY = self.dataset.get_visualize_data(num)
+        copy, _, _ = self.forward_autoencode(deX)
+        est = self.get_estimate(deX)
+        self.dataset.autoencode_visualize(deX, copy, est, deY)
