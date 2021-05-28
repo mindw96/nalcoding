@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ch7.cnn_basic_model import CnnBasicModel
+from ch07.cnn_basic_model import CnnBasicModel
 
 
 # 여러가지 정규화 기법을 사용하는 클래스이다.

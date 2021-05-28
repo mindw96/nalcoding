@@ -13,7 +13,7 @@ class FlowersDataset(Dataset):
         # 부모 클래스에서 데이터셋의 이름은 flowers, 모드는 select로 선언한다.
         super(FlowersDataset, self).__init__('flowers', 'select')
 
-        path = '../ch5/flowers'
+        path = '/flowers'
         # 데이터셋의 폴더명을 통해 레이블을 추출한다.
         self.target_names = mathutil.list_dir(path)
         images = []

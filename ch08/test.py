@@ -1,4 +1,4 @@
-from ch5.flowerdataset import FlowersDataset
+from ch05.flowerdataset import FlowersDataset
 from cnn_reg_model import CnnRegModel
 
 fd = FlowersDataset([96, 96], [96, 96, 3])

@@ -2,7 +2,7 @@ import _csv
 
 import numpy as np
 
-from ch1.abalone_class import Abalone
+from ch01.abalone_class import Abalone
 
 
 class Pulsar(Abalone):

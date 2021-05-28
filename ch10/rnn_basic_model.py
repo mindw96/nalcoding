@@ -1,6 +1,6 @@
 import numpy as np
 
-from ch9.cnn_ext_model import CnnExtModel
+from ch09.cnn_ext_model import CnnExtModel
 
 
 # RNN의 기본 틀이 되는 클래스이다.

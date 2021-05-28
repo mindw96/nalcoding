@@ -20,7 +20,7 @@ class Abalone:
     # 데이터셋을 불러오는 함수
     def load_dataset(self):
         # csv 파일을 csv라이브러리를 활용하여 불러온다
-        with open('../ch1/abalone.csv') as csvfile:
+        with open('/abalone.csv') as csvfile:
             csvreader = csv.reader(csvfile)
             # 첫째줄은 헤더정보들이 있기 떄문에 생략
             next(csvreader, None)

@@ -19,7 +19,7 @@ class Office31Dataset(Dataset):
         self.base.__init__('office31', 'dual_select')
 
         # 데이터셋의 경로를 설정한다.
-        path = '../ch6/office31'
+        path = '/office31'
         # 경로에 있는 폴더들의 이름을 통해서 도메인들을 설정한다.
         domain_names = mathutil.list_dir(path)
 

@@ -1,5 +1,5 @@
-from ch5.flowerdataset import FlowersDataset
-from ch6.dataset_office31 import Office31Dataset
+from ch05.flowerdataset import FlowersDataset
+from ch06.dataset_office31 import Office31Dataset
 from cnn_basic_model import CnnBasicModel
 
 fd = FlowersDataset([96, 96], [96, 96, 3])

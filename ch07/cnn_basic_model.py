@@ -1,7 +1,7 @@
 import numpy as np
 
 import mathutil
-from ch6.adam_model import AdamModel
+from ch06.adam_model import AdamModel
 
 
 # 합성곱 연산을 수행하는 클래스이다.

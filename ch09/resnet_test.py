@@ -1,6 +1,6 @@
-from ch5.flowerdataset import FlowersDataset
-from ch9.cnn_ext_model import CnnExtModel
-from ch9.dataset_dummy import DummyDataset
+from ch05.flowerdataset import FlowersDataset
+from ch09.cnn_ext_model import CnnExtModel
+from ch09.dataset_dummy import DummyDataset
 
 imagenet = DummyDataset('imagenet', 'select', [224, 224, 3], 1000)
 

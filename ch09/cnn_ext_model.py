@@ -2,7 +2,7 @@ import copy
 
 import numpy as np
 
-from ch8.cnn_reg_model import CnnRegModel
+from ch08.cnn_reg_model import CnnRegModel
 
 
 # Inception 모델과 ResNet 모델을 구현하는 클래스이다.
