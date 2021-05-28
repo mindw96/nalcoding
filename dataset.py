@@ -12,7 +12,7 @@ class Dataset(object):
 
     # 데이터셋의 정보들을 string 문자열로 반환한다.
     def __str__(self):
-        return '{}({}, {}{}{})'.format(self.name, self.mode, len(self.tr_xs), len(self.te_xs))
+        return '{}({}, {}+{}+{})'.format(self.name, self.mode, len(self.tr_xs), len(self.te_xs), len(self.va_xs))
 
     # 메소드가 아닌 속성으로 취급할 수 있도록 데코레이터를 붙여준다.
     @property
